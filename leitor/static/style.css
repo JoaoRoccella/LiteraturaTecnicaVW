@@ -71,6 +71,8 @@ a:hover {
 }
 
 .card {
+  display: flex;
+  flex-direction: column;
   background: white;
   border: 1px solid #d5e0e6;
   border-radius: 8px;
@@ -202,6 +204,7 @@ img {
   display: block;
   width: 100%;
   height: auto;
+  align-self: center;
 }
 
 .vista-ponto {
