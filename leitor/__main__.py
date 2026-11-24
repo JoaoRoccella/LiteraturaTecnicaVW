@@ -39,6 +39,10 @@ th{background:#e8f0f3}img{max-width:100%;height:auto}.figure{margin:1rem 0}.mute
 .vista-svg{display:block;width:100%;height:auto}
 .vista-ponto{fill:transparent;stroke:transparent;stroke-width:3;cursor:pointer}
 .vista-ponto:hover,.vista-ponto:focus-visible,.vista-ponto[aria-pressed=true]{stroke:#075b85;outline:none}
+.vista-peca-ativa{background:#e6f3ff;color:#102d42;border-left:4px solid #075b85;
+padding:.8rem 1rem;font-size:2rem;font-weight:600;overflow-wrap:anywhere}
+.vista-peca-ativa a{color:#064b70}
+.vista-peca-icone{display:inline-block;margin-left:.35em}
 .breadcrumb ol{display:flex;flex-wrap:wrap;gap:.3rem;list-style:none;padding:0;margin:0 0 1.5rem}
 .breadcrumb li:not(:first-child)::before{content:"/";color:#526774;margin-right:.3rem}
 .breadcrumb li{overflow-wrap:anywhere}
@@ -547,10 +551,18 @@ function selecionarPeca(ponto) {{
   const destino = ponto.dataset.destino;
   const painel = document.getElementById('peca-selecionada');
   painel.replaceChildren();
+  painel.classList.add('vista-peca-ativa');
   if (destino) {{
     const nome = document.createElement('a');
     nome.href = destino;
     nome.textContent = ponto.dataset.nome;
+    nome.setAttribute('aria-label', ponto.dataset.nome + ' — abre a busca de textos');
+    nome.title = 'Abre a busca de textos';
+    const icone = document.createElement('span');
+    icone.className = 'vista-peca-icone';
+    icone.setAttribute('aria-hidden', 'true');
+    icone.textContent = '↗';
+    nome.append(icone);
     painel.append(nome);
   }} else {{
     painel.textContent = ponto.dataset.nome;

@@ -57,7 +57,8 @@ navegadores confiáveis.
 - **Veículos e vistas:** escolha veículo, conjunto, grupo e variante para
   listar as vistas explodidas disponíveis. Selecione um círculo na imagem
   para ver o nome da peça; também é possível usar Tab e Enter ou Espaço.
-  Quando a peça tem link do tipo 1, seu nome abre a busca por prefixo dos
+  A descrição selecionada aparece em destaque. Quando a peça tem link do
+  tipo 1, um ícone após o nome indica que ele abre a busca por prefixo dos
   nomes de operações. Os resultados podem incluir várias variantes e devem
   ser escolhidos pelo caminho. A tabela original continua abaixo da imagem.
 - **Buscar textos:** pesquisa sem diferenciar maiúsculas ou acentos no
