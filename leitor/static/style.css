@@ -194,11 +194,8 @@ img {
 .vista-ponto:focus-visible,
 .vista-ponto[aria-pressed="true"] {
   stroke: #075b85;
-  outline: none;
-}
-
-.vista-ponto:focus-visible {
   fill: #075b85;
+  outline: none;
 }
 
 .vista-ponto-id {
