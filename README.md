@@ -59,8 +59,11 @@ navegadores confiáveis.
   para ver o nome da peça; também é possível usar Tab e Enter ou Espaço.
   A descrição selecionada aparece em destaque. Quando a peça tem link do
   tipo 1, um ícone após o nome indica que ele abre a busca por prefixo dos
-  nomes de operações. Os resultados podem incluir várias variantes e devem
-  ser escolhidos pelo caminho. A tabela original continua abaixo da imagem.
+  nomes de operações. A lista abaixo da imagem permite selecionar e localizar
+  cada peça; nomes verdes têm um botão para abrir a busca, enquanto nomes
+  vermelhos não têm link. Peças sem localização válida são identificadas na
+  lista. Os resultados podem incluir várias variantes e devem ser escolhidos
+  pelo caminho. A tabela original continua acessível em **Dados**.
 - **Buscar textos:** pesquisa sem diferenciar maiúsculas ou acentos no
   título, no caminho e no conteúdo dos arquivos `.txt`. O campo opcional
   restringe a pesquisa a uma pasta relativa à raiz do CD, por exemplo
@@ -123,7 +126,8 @@ CD e informa isso na vista.
   As tabelas correspondentes continuam acessíveis pelo explorador.
 - As áreas clicáveis das vistas usam as coordenadas da tabela e uma área
   circular ao redor de cada identificador. Coordenadas ausentes, inválidas ou
-  fora da imagem são informadas e permanecem disponíveis na tabela.
+  fora da imagem são informadas; a peça permanece na lista, mas não pode ser
+  localizada na imagem.
 - Os links de peça pesquisam pelo prefixo no nome dos textos e podem retornar
   operações de outras variantes. Confira veículo, sistema e variante antes
   de usar uma informação técnica.

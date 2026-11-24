@@ -37,6 +37,34 @@ class PontosHTML(HTMLParser):
             self.pontos.append(dict(attrs))
 
 
+class ListaPecasHTML(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.lista = False
+        self.itens = []
+        self.item = None
+
+    def handle_starttag(self, tag, attrs):
+        attrs = dict(attrs)
+        if tag == "ul" and attrs.get("class") == "vista-pecas":
+            self.lista = True
+        elif self.lista and tag == "li":
+            self.item = {"links": [], "texto": ""}
+        elif self.item is not None and tag == "a":
+            self.item["links"].append(attrs)
+
+    def handle_data(self, data):
+        if self.item is not None:
+            self.item["texto"] += data
+
+    def handle_endtag(self, tag):
+        if self.lista and tag == "li":
+            self.itens.append(self.item)
+            self.item = None
+        elif self.lista and tag == "ul":
+            self.lista = False
+
+
 class TrilhaHTML(HTMLParser):
     def __init__(self):
         super().__init__()
@@ -145,6 +173,58 @@ class CatalogoTest(unittest.TestCase):
         imagem = self.root / "imagens" / "img" / "fig1.GIF"
         with self.assertRaisesRegex(ValueError, "Imagem GIF inválida"):
             imagem_interativa(self.catalogo, imagem, [], "")
+
+    def test_lista_de_pecas_preserva_linhas_e_destinos(self):
+        imagem = self.root / "imagens" / "img" / "pontos.gif"
+        imagem.write_bytes(b"GIF89a" + (200).to_bytes(2, "little") + (100).to_bytes(2, "little"))
+        linhas = [
+            {"NomePeca": "Peça repetida", "X": "10", "Y": "20", "TipoDoLink": "1", "Link": "1010"},
+            {"NomePeca": "Peça repetida", "X": "60", "Y": "30", "TipoDoLink": "0", "Link": ""},
+            {"NomePeca": "Ponto inválido", "X": "", "Y": "1", "TipoDoLink": "1", "Link": "1011"},
+            {"NomePeca": "Link ausente", "X": "90", "Y": "40", "TipoDoLink": "1", "Link": ""},
+        ]
+        resultado = imagem_interativa(self.catalogo, imagem, linhas, "dados/Modelo", {"vista": "10-394"})
+        parser = ListaPecasHTML()
+        parser.feed(resultado)
+        self.assertEqual(len(parser.itens), 4)
+        # Itens agora estão ordenados por Y, depois X (coordenadas da imagem)
+        # Y=20, X=10; Y=30, X=60; Y=40, X=90; (inválido vai pro final)
+        primeiro, segundo, terceiro, invalido = parser.itens
+        self.assertEqual(primeiro["links"][0]["href"], "#vista-ponto-1")
+        self.assertEqual(segundo["links"][0]["href"], "#vista-ponto-2")
+        self.assertIn("vista-peca-com-link", primeiro["links"][0]["class"])
+        self.assertIn("vista-peca-sem-link", segundo["links"][0]["class"])
+        self.assertEqual(primeiro["links"][1]["href"],
+                         "/buscar?q=1010&escopo=dados%2FModelo&prefixo=1&vista=10-394")
+        self.assertEqual(len(segundo["links"]), 1)
+        self.assertIn("Localização indisponível", invalido["texto"])
+        self.assertEqual(len(invalido["links"]), 1)
+        self.assertIn("q=1011", invalido["links"][0]["href"])
+        self.assertIn("linha 3: coordenadas inválidas", resultado)
+        self.assertIn("linha 4: código de link ausente", resultado)
+        self.assertNotIn("<table", resultado)
+
+        sem_imagem = imagem_interativa(self.catalogo, None, linhas, "dados/Modelo")
+        parser = ListaPecasHTML()
+        parser.feed(sem_imagem)
+        self.assertEqual(len(parser.itens), 4)
+        self.assertTrue(all("Localização indisponível" in item["texto"] for item in parser.itens))
+        self.assertTrue(all(not link["href"].startswith("#") for item in parser.itens for link in item["links"]))
+        self.assertNotIn("<svg", sem_imagem)
+
+    def test_vista_sem_imagem_mostra_pecas_e_aviso_da_tabela(self):
+        pasta = self.root / "dados" / "ve"
+        pasta.mkdir()
+        (pasta / "10-394.db").touch()
+        catalogo = Catalogo(self.root)
+        linhas = [{"NomePeca": "Peça", "X": "10", "Y": "20", "TipoDoLink": "1", "Link": "1032"}]
+        with patch("leitor.__main__.ler_tabela", return_value=([], linhas, "Aviso da tabela")):
+            resultado = vista(catalogo, "10-394")
+        self.assertIn("Imagem da vista não encontrada", resultado)
+        self.assertIn("Aviso da tabela", resultado)
+        self.assertIn("Localização indisponível", resultado)
+        self.assertIn("q=1032", resultado)
+        self.assertNotIn("<table", resultado)
 
     def test_trilha_de_pastas_e_arquivo_direto(self):
         caminho = "dados/Modelo/Motor/principal.TXT"
@@ -452,6 +532,8 @@ class CDRealTest(unittest.TestCase):
         self.assertIn("imagens%2Fve", resultado)
         self.assertIn("prefixo=1", resultado)
         self.assertIn("dados%2FGol", resultado)
+        self.assertIn("Peças da vista", resultado)
+        self.assertNotIn("<table", resultado)
         parser = PontosHTML()
         parser.feed(resultado)
         bloco = next(p for p in parser.pontos if p["data-nome"] == "Bloco do Motor")

@@ -25,7 +25,7 @@ STYLE = """
 :root{font:16px/1.5 system-ui,sans-serif;color:#1c2936;background:#f2f5f7}
 *{box-sizing:border-box}body{margin:0}header{background:#173449;color:white;padding:1rem 2rem}
 header a{color:white;text-decoration:none}header strong{font-size:1.3rem}nav{display:flex;gap:1.2rem;flex-wrap:wrap;margin-top:.5rem}
-main{max-width:1200px;margin:2rem auto;padding:0 1.2rem}a{color:#075b85}a:hover{text-decoration:none}
+main{max-width:1200px;margin:2rem auto;padding:0 1.2rem}a{color:#075b85;text-decoration:none}a:hover{color:#053d5e}
 .card{background:white;border:1px solid #d5e0e6;border-radius:8px;padding:1.1rem;margin:1rem 0;overflow:auto}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:1rem}.grid .card{margin:0}
 h1,h2,h3{line-height:1.2}h1{font-size:1.7rem}h2{font-size:1.25rem}
@@ -39,10 +39,23 @@ th{background:#e8f0f3}img{max-width:100%;height:auto}.figure{margin:1rem 0}.mute
 .vista-svg{display:block;width:100%;height:auto}
 .vista-ponto{fill:transparent;stroke:transparent;stroke-width:3;cursor:pointer}
 .vista-ponto:hover,.vista-ponto:focus-visible,.vista-ponto[aria-pressed=true]{stroke:#075b85;outline:none}
+.vista-ponto-id{font-size:0.8rem;font-weight:bold;fill:white;pointer-events:none;user-select:none;text-anchor:middle;dominant-baseline:central}
+.vista-ponto-id-sombra{font-size:0.8rem;font-weight:bold;fill:#075b85;pointer-events:none;user-select:none;text-anchor:middle;dominant-baseline:central}
 .vista-peca-ativa{background:#e6f3ff;color:#102d42;border-left:4px solid #075b85;
 padding:.8rem 1rem;font-size:2rem;font-weight:600;overflow-wrap:anywhere}
 .vista-peca-ativa a{color:#064b70}
 .vista-peca-icone{display:inline-block;margin-left:.35em}
+.vista-pecas{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,17rem),1fr));
+gap:.75rem 1rem;list-style:none;padding:0}
+.vista-pecas li{display:flex;align-items:center;gap:.5rem;min-width:0}
+.vista-peca-nome{flex:1;min-width:0;overflow-wrap:anywhere}
+.vista-peca-id{font-weight:600;color:#526774;margin-right:.4rem;min-width:1.5rem}
+.vista-peca-sem-link{color:#a11616}.vista-peca-com-link{color:#12612f}
+.vista-peca-nome[aria-current=true]{font-weight:700;background:#e6f3ff}
+.vista-peca-indisponivel{display:block;color:#526774;font-size:.85rem}
+.vista-abrir{flex:none;padding:.35rem .6rem;border-radius:4px;background:#075b85;
+color:white;text-decoration:none;transition:background 0.2s}
+.vista-abrir:hover{background:#053d5e}
 .breadcrumb ol{display:flex;flex-wrap:wrap;gap:.3rem;list-style:none;padding:0;margin:0 0 1.5rem}
 .breadcrumb li:not(:first-child)::before{content:"/";color:#526774;margin-right:.3rem}
 .breadcrumb li{overflow-wrap:anywhere}
@@ -113,7 +126,7 @@ def pagina(titulo: str, conteudo: str, identidade: str = "", trilha: str = "") -
     return f"""<!doctype html><html lang="pt-br"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>{esc(titulo)} · CD técnico</title>
 <style>{STYLE}</style><noscript><style>.leitura{{display:none}}</style></noscript>
-</head><body>{LOADER}<header><a href="/"><strong>CD técnico</strong></a>
+</head><body>{LOADER}<header><a href="/"><strong>Literatura Técnica VolksWagen</strong></a>
 <nav><a href="/veiculos">Veículos e vistas</a><a href="/buscar">Buscar textos</a>
 <a href="/pasta?path=dados">Dados</a><a href="/pasta?path=imagens">Imagens</a>
 <a href="/pasta">Arquivos</a></nav></header><main>{trilha}{conteudo}</main>
@@ -492,33 +505,26 @@ def veiculos(c: Catalogo, params: dict[str, str]) -> str:
     return corpo + "</ul></div>"
 
 
-def imagem_interativa(c: Catalogo, imagem: Path, linhas: list[dict[str, str]], escopo: str,
+def imagem_interativa(c: Catalogo, imagem: Path | None, linhas: list[dict[str, str]], escopo: str,
                       contexto: dict[str, str] | None = None) -> str:
-    with imagem.open("rb") as arquivo_imagem:
-        cabecalho = arquivo_imagem.read(10)
-    if len(cabecalho) != 10 or cabecalho[:6] not in (b"GIF87a", b"GIF89a"):
-        raise ValueError(f"Imagem GIF inválida: {c.relativo(imagem)}")
-    largura = int.from_bytes(cabecalho[6:8], "little")
-    altura = int.from_bytes(cabecalho[8:10], "little")
-    if not largura or not altura:
-        raise ValueError(f"Dimensões inválidas na imagem: {c.relativo(imagem)}")
+    largura = altura = 0
+    if imagem:
+        with imagem.open("rb") as arquivo_imagem:
+            cabecalho = arquivo_imagem.read(10)
+        if len(cabecalho) != 10 or cabecalho[:6] not in (b"GIF87a", b"GIF89a"):
+            raise ValueError(f"Imagem GIF inválida: {c.relativo(imagem)}")
+        largura = int.from_bytes(cabecalho[6:8], "little")
+        altura = int.from_bytes(cabecalho[8:10], "little")
+        if not largura or not altura:
+            raise ValueError(f"Dimensões inválidas na imagem: {c.relativo(imagem)}")
 
-    pontos = []
+    # Primeira passagem: coleta e validação de dados
+    dados_pecas = []
     problemas = []
-    for indice, linha in enumerate(linhas, 1):
+    for indice_original, linha in enumerate(linhas, 1):
         nome = linha.get("NomePeca", "")
-        try:
-            x, y = int(linha["X"]), int(linha["Y"])
-        except (KeyError, ValueError):
-            problemas.append(f"linha {indice}: coordenadas inválidas")
-            continue
-        # As coordenadas do CD são a origem da área de 45 px do programa original.
-        centro_x, centro_y = x + 15, y + 15
-        if not (0 <= centro_x < largura and 0 <= centro_y < altura):
-            problemas.append(f"linha {indice}: ponto fora da imagem")
-            continue
         if not nome:
-            problemas.append(f"linha {indice}: nome da peça ausente")
+            problemas.append(f"linha {indice_original}: nome da peça ausente")
             continue
         destino = ""
         if linha.get("TipoDoLink") == "1":
@@ -526,15 +532,76 @@ def imagem_interativa(c: Catalogo, imagem: Path, linhas: list[dict[str, str]], e
             if codigo:
                 destino = url("/buscar", q=codigo, escopo=escopo, prefixo=1, **(contexto or {}))
             else:
-                problemas.append(f"linha {indice}: código de link ausente")
-        pontos.append(
-            f'<circle class="vista-ponto" cx="{centro_x}" cy="{centro_y}" r="23" '
-            f'role="button" tabindex="0" aria-pressed="false" aria-label="Selecionar peça: {esc(nome)}" '
-            f'data-nome="{esc(nome)}" data-destino="{esc(destino)}"><title>{esc(nome)}</title></circle>'
-        )
+                problemas.append(f"linha {indice_original}: código de link ausente")
+        
+        x = y = None
+        localizado = False
+        centro_x = centro_y = None
+        if imagem:
+            try:
+                x, y = int(linha["X"]), int(linha["Y"])
+            except (KeyError, ValueError):
+                problemas.append(f"linha {indice_original}: coordenadas inválidas")
+            else:
+                # As coordenadas do CD são a origem da área de 45 px do programa original.
+                centro_x, centro_y = x + 15, y + 15
+                if 0 <= centro_x < largura and 0 <= centro_y < altura:
+                    localizado = True
+                else:
+                    problemas.append(f"linha {indice_original}: ponto fora da imagem")
+        
+        dados_pecas.append({
+            "indice_original": indice_original,
+            "nome": nome,
+            "destino": destino,
+            "localizado": localizado,
+            "x": x,
+            "y": y,
+            "centro_x": centro_x,
+            "centro_y": centro_y,
+        })
+    
+    # Segunda passagem: ordena por Y (cima-baixo), depois X (esquerda-direita)
+    # Peças com coordenadas inválidas vão para o final
+    pecas_localizadas = [p for p in dados_pecas if p["localizado"]]
+    pecas_localizadas.sort(key=lambda p: (p["centro_y"], p["centro_x"]))
+    pecas_nao_localizadas = [p for p in dados_pecas if not p["localizado"]]
+    pecas_ordenadas = pecas_localizadas + pecas_nao_localizadas
+    
+    # Terceira passagem: gera pontos SVG e lista de peças com IDs
+    pontos = []
+    pecas = []
+    for id_peca, dados in enumerate(pecas_ordenadas, 1):
+        ponto_id = f"vista-ponto-{id_peca}"
+        classe = "vista-peca-com-link" if dados["destino"] else "vista-peca-sem-link"
+        
+        if dados["localizado"]:
+            # Adiciona círculo SVG com ID dentro dele
+            pontos.append(
+                f'<circle id="{ponto_id}" class="vista-ponto" cx="{dados["centro_x"]}" cy="{dados["centro_y"]}" r="23" '
+                f'role="button" tabindex="0" aria-pressed="false" aria-label="Peça {id_peca}: {esc(dados["nome"])}" '
+                f'data-nome="{esc(dados["nome"])}" data-destino="{esc(dados["destino"])}" data-id="{id_peca}"><title>{id_peca} - {esc(dados["nome"])}</title>'
+                f'<text class="vista-ponto-id-sombra" x="{dados["centro_x"]}" y="{dados["centro_y"]}">{id_peca}</text>'
+                f'<text class="vista-ponto-id" x="{dados["centro_x"]}" y="{dados["centro_y"]}">{id_peca}</text>'
+                f'</circle>'
+            )
+            nome_html = f'<a class="vista-peca-nome {classe}" href="#{ponto_id}" data-id="{id_peca}">{esc(dados["nome"])}</a>'
+        else:
+            nome_html = (f'<span class="vista-peca-nome {classe}" data-id="{id_peca}">{esc(dados["nome"])}'
+                         '<span class="vista-peca-indisponivel">Localização indisponível</span></span>')
+        
+        abrir = (f'<a class="vista-abrir" href="{esc(dados["destino"])}" '
+                 f'aria-label="Abrir busca de textos para {esc(dados["nome"])}">Buscar ↗</a>' if dados["destino"] else "")
+        
+        id_span = f'<span class="vista-peca-id">{id_peca}</span>'
+        pecas.append(f"<li>{id_span}{nome_html}{abrir}</li>")
+    
     aviso = ""
     if problemas:
         aviso = f'<p class="warning">Não foi possível mapear alguns dados: {esc("; ".join(problemas))}.</p>'
+    lista = f'<section class="card"><h2>Peças da vista</h2><ul class="vista-pecas">{"".join(pecas)}</ul></section>'
+    if not imagem:
+        return aviso + lista
     src = url("/imagem", path=c.relativo(imagem))
     return f"""<div class="card">
 <p>Selecione um círculo da imagem para identificar a peça. Use Tab e Enter ou Espaço pelo teclado.</p>
@@ -542,12 +609,17 @@ def imagem_interativa(c: Catalogo, imagem: Path, linhas: list[dict[str, str]], e
 <svg class="vista-svg" style="max-width:{largura}px" viewBox="0 0 {largura} {altura}"
      role="group" aria-label="Vista explodida com peças selecionáveis">
 <image href="{esc(src)}" width="{largura}" height="{altura}" />
-{''.join(pontos)}</svg></div>
+{''.join(pontos)}</svg></div>{lista}
 <script>
 const pontosVista = document.querySelectorAll('.vista-ponto');
 const imagemVista = document.querySelector('.vista-svg');
+const nomesVista = document.querySelectorAll('a.vista-peca-nome');
 function selecionarPeca(ponto) {{
   pontosVista.forEach(item => item.setAttribute('aria-pressed', String(item === ponto)));
+  nomesVista.forEach(item => {{
+    if (item.getAttribute('href') === '#' + ponto.id) item.setAttribute('aria-current', 'true');
+    else item.removeAttribute('aria-current');
+  }});
   const destino = ponto.dataset.destino;
   const painel = document.getElementById('peca-selecionada');
   painel.replaceChildren();
@@ -568,6 +640,15 @@ function selecionarPeca(ponto) {{
     painel.textContent = ponto.dataset.nome;
   }}
 }}
+nomesVista.forEach(nome => {{
+  nome.addEventListener('click', evento => {{
+    evento.preventDefault();
+    const ponto = document.getElementById(nome.getAttribute('href').slice(1));
+    selecionarPeca(ponto);
+    ponto.focus({{preventScroll: true}});
+    ponto.scrollIntoView({{block: 'center', inline: 'nearest'}});
+  }});
+}});
 imagemVista.addEventListener('click', evento => {{
   const matriz = imagemVista.getScreenCTM();
   if (!matriz) return;
@@ -630,16 +711,16 @@ def vista(c: Catalogo, codigo: str, carro: str = "", contexto: dict[str, str] | 
             corpo += "<p class='warning'>Pasta do veículo não identificada; a busca de operações abrangerá todo o CD.</p>"
     db = c.localizar(f"dados/ve/{codigo}.db")
     origem = contexto_vista({"carro": carro, **(contexto or {}), "vista": codigo})
-    if imagem and db:
-        _, linhas, _ = ler_tabela(db)
+    if not imagem:
+        corpo += "<p class='warning'>Imagem da vista não encontrada.</p>"
+    if db:
+        _, linhas, aviso = ler_tabela(db)
+        if aviso:
+            corpo += f'<p class="warning">{esc(aviso)}</p>'
         corpo += imagem_interativa(c, imagem, linhas, escopo, origem)
     elif imagem:
         corpo += f'<div class="card"><img src="{esc(url("/imagem", path=c.relativo(imagem)))}" alt="Vista {esc(codigo)}"></div>'
-    else:
-        corpo += "<p class='warning'>Imagem da vista não encontrada.</p>"
-    if db:
-        corpo += tabela(c, db, "", 0, escopo, origem)
-    else:
+    if not db:
         corpo += "<p class='warning'>Tabela de peças da vista não encontrada.</p>"
     return corpo
 
