@@ -79,7 +79,7 @@ def pagina(titulo: str, conteudo: str, identidade: str = "", trilha: str = "") -
     return f"""<!doctype html><html lang="pt-br"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>{esc(titulo)} · CD técnico</title>
 <link rel="stylesheet" href="/style.css"><noscript><style>.leitura{{display:none}}</style></noscript>
-</head><body>{LOADER}<header><a href="/"><strong>Literatura Técnica VolksWagen</strong></a>
+</head><body>{LOADER}<header><a href="/" class="header-brand"><img src="/logo" alt="Logo VolksWagen" class="header-logo"><strong>Literatura Técnica VolksWagen</strong></a>
 <nav><a href="/veiculos">Veículos e vistas</a><a href="/buscar">Buscar textos</a>
 <a href="/pasta?path=dados">Dados</a><a href="/pasta?path=imagens">Imagens</a>
 <a href="/pasta">Arquivos</a></nav></header><main>{trilha}{conteudo}</main>
@@ -733,6 +733,14 @@ class Requisicao(BaseHTTPRequestHandler):
                 self.responder(200, css_path.read_bytes(), "text/css; charset=utf-8")
             else:
                 self.responder(404, b"CSS nao encontrado", "text/plain; charset=utf-8")
+            return
+        if parsed.path == "/logo":
+            main_file = Path(inspect.getfile(Requisicao))
+            logo_path = main_file.parent / "static" / "logo_vw.webp"
+            if logo_path.exists():
+                self.responder(200, logo_path.read_bytes(), "image/webp")
+            else:
+                self.responder(404, b"Logo nao encontrado", "text/plain; charset=utf-8")
             return
         try:
             c = fonte.atualizar()
