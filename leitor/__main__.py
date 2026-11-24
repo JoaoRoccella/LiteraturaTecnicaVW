@@ -39,8 +39,8 @@ th{background:#e8f0f3}img{max-width:100%;height:auto}.figure{margin:1rem 0}.mute
 .vista-svg{display:block;width:100%;height:auto}
 .vista-ponto{fill:transparent;stroke:transparent;stroke-width:3;cursor:pointer}
 .vista-ponto:hover,.vista-ponto:focus-visible,.vista-ponto[aria-pressed=true]{stroke:#075b85;outline:none}
-.vista-ponto-id{font-size:14px;font-weight:bold;fill:white;pointer-events:none;user-select:none;text-anchor:middle;dominant-baseline:central;text-rendering:optimizeLegibility}
-.vista-ponto-id-sombra{font-size:14px;font-weight:bold;fill:#075b85;pointer-events:none;user-select:none;text-anchor:middle;dominant-baseline:central;text-rendering:optimizeLegibility;stroke:#075b85;stroke-width:0.5}
+.vista-ponto-id{font-size:14px;font-weight:bold;fill:white;pointer-events:none;user-select:none;text-anchor:middle;dominant-baseline:middle;text-rendering:optimizeLegibility}
+.vista-ponto-id-sombra{font-size:14px;font-weight:bold;fill:#075b85;pointer-events:none;user-select:none;text-anchor:middle;dominant-baseline:middle;text-rendering:optimizeLegibility;stroke:#075b85;stroke-width:0.5}
 .vista-ponto-label{font-size:16px;font-weight:bold;fill:#075b85;pointer-events:none;user-select:none;text-anchor:middle;dominant-baseline:auto;text-rendering:optimizeLegibility;text-shadow:0 0 3px white,0 0 3px white,0 0 3px white}
 .vista-peca-ativa{background:#e6f3ff;color:#102d42;border-left:4px solid #075b85;
 padding:.8rem 1rem;font-size:2rem;font-weight:600;overflow-wrap:anywhere}
@@ -582,8 +582,8 @@ def imagem_interativa(c: Catalogo, imagem: Path | None, linhas: list[dict[str, s
                 f'<circle id="{ponto_id}" class="vista-ponto" cx="{dados["centro_x"]}" cy="{dados["centro_y"]}" r="23" '
                 f'role="button" tabindex="0" aria-pressed="false" aria-label="Peça {id_peca}: {esc(dados["nome"])}" '
                 f'data-nome="{esc(dados["nome"])}" data-destino="{esc(dados["destino"])}" data-id="{id_peca}"><title>{id_peca} - {esc(dados["nome"])}</title></circle>'
-                f'<text class="vista-ponto-id-sombra" x="{dados["centro_x"]}" y="{dados["centro_y"]}">{id_peca}</text>'
-                f'<text class="vista-ponto-id" x="{dados["centro_x"]}" y="{dados["centro_y"]}">{id_peca}</text>'
+                f'<text class="vista-ponto-id-sombra" x="{dados["centro_x"]}" y="{dados["centro_y"]}" dy="0.3em">{id_peca}</text>'
+                f'<text class="vista-ponto-id" x="{dados["centro_x"]}" y="{dados["centro_y"]}" dy="0.3em">{id_peca}</text>'
             )
             nome_html = f'<a class="vista-peca-nome {classe}" href="#{ponto_id}" data-id="{id_peca}">{esc(dados["nome"])}</a>'
         else:
