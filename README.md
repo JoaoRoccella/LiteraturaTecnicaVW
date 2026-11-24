@@ -46,6 +46,9 @@ navegadores confiáveis.
 
 ## Como usar
 
+- O caminho de navegação no topo das páginas permite voltar diretamente às
+  etapas anteriores, incluindo veículo, conjunto, grupo, variante, vista,
+  busca e pastas. Links de busca conservam o contexto da vista de origem.
 - **Veículos e vistas:** escolha veículo, conjunto, grupo e variante para
   listar as vistas explodidas disponíveis. Selecione um círculo na imagem
   para ver o nome da peça; também é possível usar Tab e Enter ou Espaço.

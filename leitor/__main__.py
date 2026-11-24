@@ -38,6 +38,9 @@ th{background:#e8f0f3}img{max-width:100%;height:auto}.figure{margin:1rem 0}.mute
 .vista-svg{display:block;width:100%;height:auto}
 .vista-ponto{fill:transparent;stroke:transparent;stroke-width:3;cursor:pointer}
 .vista-ponto:hover,.vista-ponto:focus-visible,.vista-ponto[aria-pressed=true]{stroke:#075b85;outline:none}
+.breadcrumb ol{display:flex;flex-wrap:wrap;gap:.3rem;list-style:none;padding:0;margin:0 0 1.5rem}
+.breadcrumb li:not(:first-child)::before{content:"/";color:#526774;margin-right:.3rem}
+.breadcrumb li{overflow-wrap:anywhere}
 """
 
 
@@ -53,18 +56,19 @@ def link(route: str, label: object, **params: object) -> str:
     return f'<a href="{esc(url(route, **params))}">{esc(label)}</a>'
 
 
-def arquivo_link(catalogo: Catalogo, path: Path, label: str | None = None) -> str:
-    return link("/arquivo", label or path.name, path=catalogo.relativo(path))
+def arquivo_link(catalogo: Catalogo, path: Path, label: str | None = None,
+                 contexto: dict[str, str] | None = None) -> str:
+    return link("/arquivo", label or path.name, path=catalogo.relativo(path), **(contexto or {}))
 
 
-def pagina(titulo: str, conteudo: str, identidade: str = "") -> bytes:
+def pagina(titulo: str, conteudo: str, identidade: str = "", trilha: str = "") -> bytes:
     identificador = json.dumps(identidade).replace("<", "\\u003c")
     return f"""<!doctype html><html lang="pt-br"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>{esc(titulo)} · CD técnico</title>
 <style>{STYLE}</style></head><body><header><a href="/"><strong>CD técnico</strong></a>
 <nav><a href="/veiculos">Veículos e vistas</a><a href="/buscar">Buscar textos</a>
 <a href="/pasta?path=dados">Dados</a><a href="/pasta?path=imagens">Imagens</a>
-<a href="/pasta">Arquivos</a></nav></header><main>{conteudo}</main>
+<a href="/pasta">Arquivos</a></nav></header><main>{trilha}{conteudo}</main>
 <script>
 const midiaInicial = {identificador};
 async function verificarMidia() {{
@@ -126,10 +130,13 @@ def pasta(c: Catalogo, path: str, offset: int) -> str:
 <ul class="files">{''.join(itens)}</ul>{paginacao('/pasta', len(entradas), offset, path=rel)}</div>"""
 
 
-def busca(c: Catalogo, termo: str, offset: int, escopo: str = "", prefixo: bool = False) -> str:
+def busca(c: Catalogo, termo: str, offset: int, escopo: str = "", prefixo: bool = False,
+          contexto: dict[str, str] | None = None) -> str:
+    contexto = contexto or {}
     form = f"""<form action="/buscar"><input type="search" name="q" value="{esc(termo)}"
 placeholder="Título, código, caminho ou texto" aria-label="Buscar textos">
-<input name="escopo" value="{esc(escopo)}" placeholder="Pasta opcional" aria-label="Pasta opcional"><button>Buscar</button></form>"""
+<input name="escopo" value="{esc(escopo)}" placeholder="Pasta opcional" aria-label="Pasta opcional">
+{campos_ocultos(contexto)}<button>Buscar</button></form>"""
     if not termo.strip():
         return f"<h1>Buscar textos</h1><div class='card'>{form}<p>A primeira busca indexa os textos do CD em memória.</p></div>"
     palavras = normalizar(termo).split()
@@ -139,35 +146,38 @@ placeholder="Título, código, caminho ou texto" aria-label="Buscar textos">
     resultados = [d for d in c.indexar_documentos() if d.caminho.is_relative_to(pasta)
                   and (normalizar(d.caminho.stem).startswith(normalizar(termo)) if prefixo
                        else all(p in d.busca for p in palavras))]
-    itens = "".join(f"<li>{arquivo_link(c, d.caminho, d.titulo)}<br><small class='muted path'>{esc(c.relativo(d.caminho))}</small></li>" for d in resultados[offset:offset + PAGE_SIZE])
+    origem = contexto | {"busca_q": termo, "busca_escopo": escopo,
+                         "busca_prefixo": str(int(prefixo)), "busca_offset": str(offset)}
+    itens = "".join(f"<li>{arquivo_link(c, d.caminho, d.titulo, origem)}<br><small class='muted path'>{esc(c.relativo(d.caminho))}</small></li>" for d in resultados[offset:offset + PAGE_SIZE])
     aviso = f"<p class='warning'>Não foi possível indexar {len(c.erros_indexacao)} arquivo(s): {esc('; '.join(c.erros_indexacao[:5]))}</p>" if c.erros_indexacao else ""
     modo = "<p class='muted'>Operações com nome iniciado pelo código da peça. Uma nova busca pesquisa também o conteúdo.</p>" if prefixo else ""
-    return f"<h1>Buscar textos</h1><div class='card'>{form}{modo}{aviso}{paginacao('/buscar', len(resultados), offset, q=termo, escopo=escopo, prefixo=int(prefixo))}<ol>{itens}</ol></div>"
+    return f"<h1>Buscar textos</h1><div class='card'>{form}{modo}{aviso}{paginacao('/buscar', len(resultados), offset, q=termo, escopo=escopo, prefixo=int(prefixo), **contexto)}<ol>{itens}</ol></div>"
 
 
-def referencias_html(c: Catalogo, origem: Path, nome: str, imagem: bool) -> str:
+def referencias_html(c: Catalogo, origem: Path, nome: str, imagem: bool,
+                     contexto: dict[str, str] | None = None) -> str:
     if Path(nome).suffix.casefold() in {".bmp", ".xls"}:
         vf = c.localizar(f"dados/Tabelas/{Path(nome).stem}.vf")
         if vf:
             figuras = [linha.strip() for linha in ler_texto(vf).splitlines() if linha.strip()]
             if not figuras:
                 return f"<p class='warning'>Lista de figuras vazia: {esc(c.relativo(vf))}</p>"
-            return "".join(referencias_html(c, vf, figura + ".gif", True) for figura in figuras)
+            return "".join(referencias_html(c, vf, figura + ".gif", True, contexto) for figura in figuras)
     candidatos = c.referencias(origem, nome)
     if not candidatos:
         return f'<p class="warning">Referência não encontrada: {esc(nome)}</p>'
     if len(candidatos) > 1:
         return f"<p>Referência ambígua {esc(nome)}:</p><ul>" + "".join(
-            f"<li>{arquivo_link(c, p, c.relativo(p))}</li>" for p in candidatos
+            f"<li>{arquivo_link(c, p, c.relativo(p), contexto)}</li>" for p in candidatos
         ) + "</ul>"
     destino = candidatos[0]
     if imagem and destino.suffix.casefold() in {".gif", ".jpg", ".jpeg", ".png", ".bmp"}:
         src = url("/imagem", path=c.relativo(destino))
-        return f'<figure class="figure"><img loading="lazy" src="{esc(src)}" alt="{esc(nome)}"><figcaption>{arquivo_link(c, destino)}</figcaption></figure>'
-    return f"<p>↗ {arquivo_link(c, destino, nome)}</p>"
+        return f'<figure class="figure"><img loading="lazy" src="{esc(src)}" alt="{esc(nome)}"><figcaption>{arquivo_link(c, destino, contexto=contexto)}</figcaption></figure>'
+    return f"<p>↗ {arquivo_link(c, destino, nome, contexto)}</p>"
 
 
-def documento(c: Catalogo, path: Path) -> str:
+def documento(c: Catalogo, path: Path, contexto: dict[str, str] | None = None) -> str:
     linhas = ler_texto(path).splitlines()
     titulo = path.name
     saida = []
@@ -184,7 +194,7 @@ def documento(c: Catalogo, path: Path) -> str:
             continue
         match = re.fullmatch(r"([$%])filename=(.*?)\1", texto, flags=re.IGNORECASE)
         if match:
-            saida.append(referencias_html(c, path, match.group(2), match.group(1) == "%"))
+            saida.append(referencias_html(c, path, match.group(2), match.group(1) == "%", contexto))
         elif texto.startswith("#"):
             saida.append(f"<p>• {esc(texto[1:])}</p>")
         elif texto.startswith(("^", "@", "~")):
@@ -198,7 +208,9 @@ def documento(c: Catalogo, path: Path) -> str:
     return f"<h1>{esc(titulo)}</h1><p class='muted path'>{esc(c.relativo(path))}</p><div class='card doc'>{''.join(saida)}</div>"
 
 
-def tabela(c: Catalogo, path: Path, termo: str, offset: int, escopo: str = "") -> str:
+def tabela(c: Catalogo, path: Path, termo: str, offset: int, escopo: str = "",
+           contexto: dict[str, str] | None = None) -> str:
+    contexto = contexto or {}
     campos, linhas, aviso = ler_tabela(path)
     if termo:
         chave = normalizar(termo)
@@ -210,10 +222,12 @@ def tabela(c: Catalogo, path: Path, termo: str, offset: int, escopo: str = "") -
         for campo in campos:
             valor = linha[campo]
             if campo.casefold() == "codve" and valor:
-                conteudo = link("/vista", valor, codigo=valor)
+                anterior = contexto_vista(contexto)
+                anterior.pop("vista", None)
+                conteudo = link("/vista", valor, codigo=valor, **anterior)
             elif (campo.casefold() == "link" and valor and path.parent.name.casefold() == "ve"
                   and linha.get("TipoDoLink") == "1"):
-                conteudo = link("/buscar", valor, q=valor, escopo=escopo, prefixo=1)
+                conteudo = link("/buscar", valor, q=valor, escopo=escopo, prefixo=1, **contexto_vista(contexto))
             else:
                 conteudo = esc(valor)
             celulas.append(f"<td>{conteudo}</td>")
@@ -222,18 +236,18 @@ def tabela(c: Catalogo, path: Path, termo: str, offset: int, escopo: str = "") -
     aviso_html = f"<p class='warning'>{esc(aviso)}</p>" if aviso else ""
     return f"""<h1>Tabela: {esc(path.name)}</h1><p class="muted path">{esc(rel)}</p>{aviso_html}
 <div class="card"><form action="/arquivo"><input type="hidden" name="path" value="{esc(rel)}">
-<input type="search" name="q" value="{esc(termo)}" placeholder="Filtrar registros" aria-label="Filtrar registros"><button>Filtrar</button></form>
-{paginacao('/arquivo', len(linhas), offset, path=rel, q=termo)}
+<input type="search" name="q" value="{esc(termo)}" placeholder="Filtrar registros" aria-label="Filtrar registros">{campos_ocultos(contexto)}<button>Filtrar</button></form>
+{paginacao('/arquivo', len(linhas), offset, path=rel, q=termo, **contexto)}
 <table><thead><tr>{cabecalho}</tr></thead><tbody>{''.join(linhas_html)}</tbody></table></div>"""
 
 
-def planilha(c: Catalogo, path: Path, sheet: int) -> str:
+def planilha(c: Catalogo, path: Path, sheet: int, contexto: dict[str, str] | None = None) -> str:
     livro = xlrd.open_workbook(path, on_demand=True)
     try:
         if sheet < 0 or sheet >= livro.nsheets:
             raise ValueError("Aba da planilha não encontrada.")
         aba = livro.sheet_by_index(sheet)
-        opcoes = " · ".join(link("/arquivo", nome, path=c.relativo(path), sheet=i) for i, nome in enumerate(livro.sheet_names()))
+        opcoes = " · ".join(link("/arquivo", nome, path=c.relativo(path), sheet=i, **(contexto or {})) for i, nome in enumerate(livro.sheet_names()))
         corpo = []
         for linha in range(min(aba.nrows, 200)):
             celulas = "".join(f"<td>{esc(aba.cell_value(linha, coluna))}</td>" for coluna in range(min(aba.ncols, 60)))
@@ -256,14 +270,125 @@ def ler_lista(c: Catalogo, relativo: str) -> list[dict[str, str]]:
     return linhas
 
 
+NIVEIS = (
+    ("carro", "Veículo", "dados/Carro.DB", "CodCarro", "NCarro"),
+    ("conjunto", "Conjunto", "dados/Conjuntos.DB", "CodConjunto", "NConjunto"),
+    ("grupo", "Grupo", "dados/Grupo.DB", "CodGrupo", "NGrupo"),
+    ("variante", "Variante", "dados/VarGrupo.DB", "CodVarGrupo", "NVarGrupo"),
+)
+
+
+def contexto_vista(params: dict[str, str]) -> dict[str, str]:
+    contexto = {}
+    for chave, _, _, _, _ in NIVEIS:
+        valor = params.get(chave, "")
+        if not valor or not valor.isascii() or not valor.isdecimal() or int(valor) > 999:
+            break
+        contexto[chave] = valor
+    codigo = params.get("vista", "")
+    if codigo and re.fullmatch(r"[a-zA-Z0-9_-]+", codigo):
+        contexto["vista"] = codigo
+    return contexto
+
+
+def contexto_busca(params: dict[str, str]) -> dict[str, str]:
+    contexto = contexto_vista(params)
+    if params.get("busca_q"):
+        for chave in ("busca_q", "busca_escopo", "busca_prefixo", "busca_offset"):
+            if chave in params:
+                contexto[chave] = params[chave]
+    return contexto
+
+
+def campos_ocultos(params: dict[str, str]) -> str:
+    return "".join(f'<input type="hidden" name="{esc(chave)}" value="{esc(valor)}">'
+                   for chave, valor in params.items())
+
+
+def renderizar_trilha(itens: list[tuple[str, str]]) -> str:
+    partes = []
+    for i, (nome, endereco) in enumerate(itens):
+        if i == len(itens) - 1:
+            partes.append(f'<li aria-current="page">{esc(nome)}</li>')
+        else:
+            partes.append(f'<li><a href="{esc(endereco)}">{esc(nome)}</a></li>')
+    return '<nav class="breadcrumb" aria-label="Caminho de navegação"><ol>' + "".join(partes) + "</ol></nav>"
+
+
+def trilha_navegacao(c: Catalogo, rota: str, params: dict[str, str]) -> str:
+    itens: list[tuple[str, str]] = [("Início", "/")]
+
+    def niveis(contexto: dict[str, str]) -> None:
+        itens.append(("Veículos e vistas", "/veiculos"))
+        anteriores: dict[str, str] = {}
+        for chave, descricao, tabela, codigo, nome in NIVEIS:
+            valor = contexto.get(chave)
+            if not valor:
+                break
+            anteriores[chave] = valor
+            linhas = ler_lista(c, tabela)
+            legenda = next((r[nome] for r in linhas if r[codigo] == valor and r[nome]), valor)
+            itens.append((f"{descricao}: {legenda}", url("/veiculos", **anteriores)))
+
+    def vista_anterior(contexto: dict[str, str]) -> None:
+        codigo = contexto.get("vista", "")
+        if codigo:
+            niveis(contexto)
+            anteriores = {k: v for k, v in contexto.items() if k != "vista"}
+            itens.append((f"Vista {codigo}", url("/vista", codigo=codigo, **anteriores)))
+
+    def busca_anterior(contexto: dict[str, str], q: str, escopo: str, prefixo: str, offset: str) -> None:
+        vista_anterior(contexto)
+        parametros = dict(contexto)
+        itens.append(("Buscar textos", url("/buscar", **parametros)))
+        if q:
+            parametros.update(q=q, escopo=escopo, prefixo=prefixo, offset=offset)
+            itens.append((f"Busca: {q}", url("/buscar", **parametros)))
+
+    def pastas(relativo: Path, incluir_ultima: bool) -> None:
+        itens.append(("Arquivos", "/pasta"))
+        partes = relativo.parts if incluir_ultima else relativo.parts[:-1]
+        caminho = Path()
+        for parte in partes:
+            caminho /= parte
+            itens.append((parte, url("/pasta", path=caminho.as_posix())))
+
+    contexto = contexto_vista(params)
+    if rota == "/":
+        pass
+    elif rota == "/veiculos":
+        niveis(contexto)
+    elif rota == "/vista":
+        contexto["vista"] = params.get("codigo", "")
+        vista_anterior(contexto)
+    elif rota == "/buscar":
+        busca_anterior(contexto, params.get("q", ""), params.get("escopo", ""),
+                       params.get("prefixo", ""), params.get("offset", "0"))
+    elif rota == "/pasta":
+        relativo = Path(c.relativo(c.caminho(params.get("path", ""))))
+        pastas(relativo, True)
+    elif rota == "/arquivo":
+        relativo = Path(c.relativo(obter(c, params.get("path", ""))))
+        if params.get("busca_q"):
+            busca_anterior(contexto, params["busca_q"], params.get("busca_escopo", ""),
+                           params.get("busca_prefixo", ""), params.get("busca_offset", "0"))
+        elif contexto.get("vista"):
+            vista_anterior(contexto)
+        else:
+            pastas(relativo, False)
+        itens.append((relativo.name, ""))
+    else:
+        return ""
+    return renderizar_trilha(itens)
+
+
 def veiculos(c: Catalogo, params: dict[str, str]) -> str:
-    titulos = [("carro", "Veículo"), ("conjunto", "Conjunto"), ("grupo", "Grupo"), ("variante", "Variante")]
+    titulos = [(chave, descricao) for chave, descricao, _, _, _ in NIVEIS]
     selecionados = {k: params[k] for k, _ in titulos if params.get(k)}
     for valor in selecionados.values():
         if not valor.isdecimal() or int(valor) > 999:
             raise ValueError("Código de navegação inválido.")
-    corpo = "<h1>Veículos e vistas</h1><p>" + link("/veiculos", "Todos os veículos") + "</p>"
-    partes = []
+    corpo = "<h1>Veículos e vistas</h1>"
     carro, conjunto, grupo, variante = (selecionados.get(k) for k, _ in titulos)
     if carro is None:
         opcoes = [(r["CodCarro"], r["NCarro"]) for r in ler_lista(c, "dados/Carro.DB") if r["CodCarro"]]
@@ -285,21 +410,19 @@ def veiculos(c: Catalogo, params: dict[str, str]) -> str:
         rel = f"dados/carro_conjunto_grupo_vargr/{int(grupo):02d}/{int(carro):02d}{int(conjunto):02d}{int(grupo):02d}{int(variante):02d}.db"
         opcoes = [(r["CodVE"], r["CodVE"]) for r in ler_lista(c, rel)]
         nivel = "vista"
-    for k, titulo in titulos:
-        if k in selecionados:
-            partes.append(f"{titulo}: {esc(selecionados[k])}")
-    corpo += "<p class='muted'>" + " / ".join(partes) + "</p><div class='card'>"
+    corpo += "<div class='card'>"
     corpo += f"<h2>{esc(dict(titulos).get(nivel, 'Vistas explodidas'))}</h2><ul>"
     for codigo, nome in opcoes:
         if nivel == "vista":
-            item = link("/vista", nome, codigo=codigo, carro=carro)
+            item = link("/vista", nome, codigo=codigo, **selecionados)
         else:
             item = link("/veiculos", f"{nome} ({codigo})", **(selecionados | {nivel: codigo}))
         corpo += f"<li>{item}</li>"
     return corpo + "</ul></div>"
 
 
-def imagem_interativa(c: Catalogo, imagem: Path, linhas: list[dict[str, str]], escopo: str) -> str:
+def imagem_interativa(c: Catalogo, imagem: Path, linhas: list[dict[str, str]], escopo: str,
+                      contexto: dict[str, str] | None = None) -> str:
     with imagem.open("rb") as arquivo_imagem:
         cabecalho = arquivo_imagem.read(10)
     if len(cabecalho) != 10 or cabecalho[:6] not in (b"GIF87a", b"GIF89a"):
@@ -330,7 +453,7 @@ def imagem_interativa(c: Catalogo, imagem: Path, linhas: list[dict[str, str]], e
         if linha.get("TipoDoLink") == "1":
             codigo = linha.get("Link", "")
             if codigo:
-                destino = url("/buscar", q=codigo, escopo=escopo, prefixo=1)
+                destino = url("/buscar", q=codigo, escopo=escopo, prefixo=1, **(contexto or {}))
             else:
                 problemas.append(f"linha {indice}: código de link ausente")
         pontos.append(
@@ -397,7 +520,7 @@ pontosVista.forEach(ponto => {{
 </script>"""
 
 
-def vista(c: Catalogo, codigo: str, carro: str = "") -> str:
+def vista(c: Catalogo, codigo: str, carro: str = "", contexto: dict[str, str] | None = None) -> str:
     if not re.fullmatch(r"[a-zA-Z0-9_-]+", codigo):
         raise ValueError("Código de vista inválido.")
     corpo = f"<h1>Vista explodida: {esc(codigo)}</h1>"
@@ -427,34 +550,36 @@ def vista(c: Catalogo, codigo: str, carro: str = "") -> str:
         if not escopo:
             corpo += "<p class='warning'>Pasta do veículo não identificada; a busca de operações abrangerá todo o CD.</p>"
     db = c.localizar(f"dados/ve/{codigo}.db")
+    origem = contexto_vista({"carro": carro, **(contexto or {}), "vista": codigo})
     if imagem and db:
         _, linhas, _ = ler_tabela(db)
-        corpo += imagem_interativa(c, imagem, linhas, escopo)
+        corpo += imagem_interativa(c, imagem, linhas, escopo, origem)
     elif imagem:
         corpo += f'<div class="card"><img src="{esc(url("/imagem", path=c.relativo(imagem)))}" alt="Vista {esc(codigo)}"></div>'
     else:
         corpo += "<p class='warning'>Imagem da vista não encontrada.</p>"
     if db:
-        corpo += tabela(c, db, "", 0, escopo)
+        corpo += tabela(c, db, "", 0, escopo, origem)
     else:
         corpo += "<p class='warning'>Tabela de peças da vista não encontrada.</p>"
     return corpo
 
 
-def arquivo(c: Catalogo, rel: str, termo: str, offset: int, sheet: int) -> str:
+def arquivo(c: Catalogo, rel: str, termo: str, offset: int, sheet: int,
+            contexto: dict[str, str] | None = None) -> str:
     path = obter(c, rel)
     ext = path.suffix.casefold()
     if ext == ".txt":
-        return documento(c, path)
+        return documento(c, path, contexto)
     if ext == ".db":
-        return tabela(c, path, termo, offset)
+        return tabela(c, path, termo, offset, contexto=contexto)
     if ext == ".xls":
-        return planilha(c, path, sheet)
+        return planilha(c, path, sheet, contexto)
     if ext in {".gif", ".jpg", ".jpeg", ".png", ".bmp"}:
         return f'<h1>{esc(path.name)}</h1><div class="card"><img src="{esc(url("/imagem", path=c.relativo(path)))}" alt="{esc(path.name)}"></div>'
     if ext == ".vf":
         texto = ler_texto(path)
-        figuras = "".join(referencias_html(c, path, linha.strip() + ".gif", True)
+        figuras = "".join(referencias_html(c, path, linha.strip() + ".gif", True, contexto)
                           for linha in texto.splitlines() if linha.strip())
         return f"<h1>{esc(path.name)}</h1><p>Referências originais:</p><div class='card'><pre>{esc(texto)}</pre>{figuras}</div>"
     return f"<h1>{esc(path.name)}</h1><p class='path'>{esc(rel)}</p><p>Formato auxiliar ou executável legado; este leitor não o executa nem interpreta.</p>"
@@ -474,6 +599,7 @@ class Requisicao(BaseHTTPRequestHandler):
         query = {k: v[-1] for k, v in parse_qs(parsed.query, keep_blank_values=True).items()}
         fonte = self.server.fonte
         identidade = ""
+        trilha = ""
         try:
             c = fonte.atualizar()
             identidade = fonte.midia.identidade if fonte.midia else ""
@@ -488,7 +614,8 @@ class Requisicao(BaseHTTPRequestHandler):
 <div class="card"><p id="estado-cd" class="warning">{esc(fonte.mensagem)}</p>
 <p>Insira um CD compatível e aguarde a montagem pelo sistema. A detecção será refeita automaticamente.</p>
 <p>{link('/', 'Verificar novamente')}</p></div>"""
-                self.responder(200, pagina("Aguardando CD", conteudo), "text/html; charset=utf-8")
+                trilha = renderizar_trilha([("Início", "/"), ("Aguardando CD", "")])
+                self.responder(200, pagina("Aguardando CD", conteudo, trilha=trilha), "text/html; charset=utf-8")
                 return
             offset = max(0, int(query.get("offset", "0")))
             if parsed.path == "/imagem":
@@ -503,25 +630,30 @@ class Requisicao(BaseHTTPRequestHandler):
             elif parsed.path == "/pasta":
                 conteudo = pasta(c, query.get("path", ""), offset)
             elif parsed.path == "/buscar":
-                conteudo = busca(c, query.get("q", ""), offset, query.get("escopo", ""), query.get("prefixo") == "1")
+                conteudo = busca(c, query.get("q", ""), offset, query.get("escopo", ""),
+                                 query.get("prefixo") == "1", contexto_vista(query))
             elif parsed.path == "/arquivo":
-                conteudo = arquivo(c, query.get("path", ""), query.get("q", ""), offset, int(query.get("sheet", "0")))
+                conteudo = arquivo(c, query.get("path", ""), query.get("q", ""), offset,
+                                   int(query.get("sheet", "0")), contexto_busca(query))
             elif parsed.path == "/veiculos":
                 conteudo = veiculos(c, query)
             elif parsed.path == "/vista":
-                conteudo = vista(c, query.get("codigo", ""), query.get("carro", ""))
+                conteudo = vista(c, query.get("codigo", ""), query.get("carro", ""), contexto_vista(query))
             else:
                 raise FileNotFoundError("Página não encontrada.")
+            trilha = trilha_navegacao(c, parsed.path, query)
             status = 200
         except (OSError, ValueError, xlrd.XLRDError) as exc:
             LOG.warning("Não foi possível abrir %s: %s", self.path, exc)
             status = 404 if isinstance(exc, FileNotFoundError) else 400
             conteudo = f"<h1>Não foi possível abrir o conteúdo</h1><p class='error'>{esc(exc)}</p>"
+            trilha = renderizar_trilha([("Início", "/"), ("Erro", "")])
         except Exception:
             LOG.exception("Erro ao processar %s", self.path)
             status = 500
             conteudo = "<h1>Erro ao ler o conteúdo</h1><p class='error'>Consulte o terminal para detalhes.</p>"
-        data = pagina("Leitor", conteudo, identidade)
+            trilha = renderizar_trilha([("Início", "/"), ("Erro", "")])
+        data = pagina("Leitor", conteudo, identidade, trilha)
         self.responder(status, data, "text/html; charset=utf-8")
 
     def responder(self, status: int, data: bytes, tipo: str) -> None:

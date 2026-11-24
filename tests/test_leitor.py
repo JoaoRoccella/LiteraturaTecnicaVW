@@ -9,7 +9,9 @@ from urllib.error import HTTPError
 from urllib.parse import urlencode
 from urllib.request import urlopen
 
-from leitor.__main__ import Servidor, busca, documento, imagem_interativa, planilha, veiculos, vista
+from leitor.__main__ import (
+    Servidor, busca, documento, imagem_interativa, planilha, trilha_navegacao, veiculos, vista,
+)
 from leitor.catalogo import Catalogo, ler_tabela
 from leitor.midia import DetectorLinux, DetectorWindows, FonteCD, Midia, Resultado, _montagens
 
@@ -33,6 +35,40 @@ class PontosHTML(HTMLParser):
     def handle_starttag(self, tag, attrs):
         if tag == "circle":
             self.pontos.append(dict(attrs))
+
+
+class TrilhaHTML(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.trilha = False
+        self.itens = []
+        self.atual = None
+
+    def handle_starttag(self, tag, attrs):
+        attrs = dict(attrs)
+        if tag == "nav" and attrs.get("aria-label") == "Caminho de navegação":
+            self.trilha = True
+        if self.trilha and tag == "li":
+            self.atual = {"texto": "", "href": None, "current": attrs.get("aria-current")}
+        if self.trilha and tag == "a" and self.atual is not None:
+            self.atual["href"] = attrs.get("href")
+
+    def handle_data(self, data):
+        if self.atual is not None:
+            self.atual["texto"] += data
+
+    def handle_endtag(self, tag):
+        if tag == "li" and self.atual is not None:
+            self.itens.append(self.atual)
+            self.atual = None
+        if tag == "nav":
+            self.trilha = False
+
+
+def trilha_itens(html):
+    parser = TrilhaHTML()
+    parser.feed(html)
+    return parser.itens
 
 
 class CatalogoTest(unittest.TestCase):
@@ -109,6 +145,54 @@ class CatalogoTest(unittest.TestCase):
         imagem = self.root / "imagens" / "img" / "fig1.GIF"
         with self.assertRaisesRegex(ValueError, "Imagem GIF inválida"):
             imagem_interativa(self.catalogo, imagem, [], "")
+
+    def test_trilha_de_pastas_e_arquivo_direto(self):
+        caminho = "dados/Modelo/Motor/principal.TXT"
+        itens = trilha_itens(trilha_navegacao(self.catalogo, "/arquivo", {"path": caminho}))
+        self.assertEqual([item["texto"] for item in itens],
+                         ["Início", "Arquivos", "dados", "Modelo", "Motor", "principal.TXT"])
+        self.assertEqual(itens[3]["href"], "/pasta?path=dados%2FModelo")
+        self.assertEqual(itens[-1]["current"], "page")
+        self.assertIsNone(itens[-1]["href"])
+        itens = trilha_itens(trilha_navegacao(self.catalogo, "/pasta", {"path": "dados/Modelo"}))
+        self.assertEqual(itens[-1]["texto"], "Modelo")
+        self.assertEqual(itens[-2]["href"], "/pasta?path=dados")
+        self.assertEqual(trilha_itens(trilha_navegacao(self.catalogo, "/", {}))[0]["current"], "page")
+
+    def test_trilha_e_contexto_ate_documento(self):
+        tabelas = {
+            "dados/Carro.DB": [{"CodCarro": "1", "NCarro": "Gol 95 >"}],
+            "dados/Conjuntos.DB": [{"CodConjunto": "1", "NConjunto": "Motor"}],
+            "dados/Grupo.DB": [{"CodGrupo": "10", "NGrupo": "Bloco"}],
+            "dados/VarGrupo.DB": [{"CodVarGrupo": "4", "NVarGrupo": "AE"}],
+        }
+        contexto = {"carro": "1", "conjunto": "1", "grupo": "10", "variante": "4", "vista": "10-403"}
+        parametros = contexto | {"path": "dados/Modelo/Motor/principal.TXT", "busca_q": "1010",
+                                 "busca_escopo": "dados/Modelo", "busca_prefixo": "1", "busca_offset": "200"}
+        with patch("leitor.__main__.ler_lista", side_effect=lambda c, path: tabelas[path]):
+            itens = trilha_itens(trilha_navegacao(self.catalogo, "/arquivo", parametros))
+        self.assertEqual([item["texto"] for item in itens], [
+            "Início", "Veículos e vistas", "Veículo: Gol 95 >", "Conjunto: Motor",
+            "Grupo: Bloco", "Variante: AE", "Vista 10-403", "Buscar textos",
+            "Busca: 1010", "principal.TXT",
+        ])
+        self.assertEqual(itens[4]["href"], "/veiculos?carro=1&conjunto=1&grupo=10")
+        self.assertIn("codigo=10-403", itens[6]["href"])
+        self.assertIn("variante=4", itens[6]["href"])
+        self.assertIn("offset=200", itens[8]["href"])
+        resultado = busca(self.catalogo, "atencao", 0, "dados/Modelo", False, contexto)
+        self.assertIn("busca_q=atencao", resultado)
+        self.assertIn("vista=10-403", resultado)
+        documentos = self.catalogo.indexar_documentos()
+        with patch.object(self.catalogo, "indexar_documentos", return_value=documentos * 201):
+            resultado = busca(self.catalogo, "atencao", 0, "dados/Modelo", False, contexto)
+        self.assertIn("offset=200", resultado)
+        self.assertIn("variante=4", resultado)
+        resultado = documento(self.catalogo, self.doc, {
+            **contexto, "busca_q": "1010", "busca_escopo": "dados/Modelo",
+        })
+        self.assertIn("busca_q=1010", resultado)
+        self.assertIn("vista=10-403", resultado)
 
     def test_pasta_dados_com_caixa_diferente(self):
         (self.root / "dados").rename(self.root / "DADOS")
@@ -298,6 +382,7 @@ class CDRealTest(unittest.TestCase):
             self.assertIn(esperado, veiculos(self.catalogo, params))
             params[nivel] = valor
         self.assertIn("10-403", veiculos(self.catalogo, params))
+        self.assertIn("grupo=10&amp;variante=4", veiculos(self.catalogo, params))
         resultado = vista(self.catalogo, "10-403", "1")
         self.assertIn("imagens%2Fve", resultado)
         self.assertIn("prefixo=1", resultado)
@@ -307,6 +392,9 @@ class CDRealTest(unittest.TestCase):
         bloco = next(p for p in parser.pontos if p["data-nome"] == "Bloco do Motor")
         self.assertEqual((bloco["cx"], bloco["cy"]), ("486", "507"))
         self.assertIn("q=1010", bloco["data-destino"])
+        itens = trilha_itens(trilha_navegacao(self.catalogo, "/vista", params | {"codigo": "10-403"}))
+        self.assertEqual(itens[-1]["texto"], "Vista 10-403")
+        self.assertEqual(itens[-2]["href"], "/veiculos?carro=1&conjunto=1&grupo=10&variante=4")
 
     def test_planilha_e_texto_com_imagens(self):
         resultado = documento(self.catalogo, ROOT / "dados" / "GolIII" / "Mp90" / "248855K.TXT")
