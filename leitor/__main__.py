@@ -531,7 +531,7 @@ def imagem_interativa(c: Catalogo, imagem: Path | None, linhas: list[dict[str, s
         if dados["localizado"]:
             # Adiciona círculo SVG com ID centralizado dentro
             pontos.append(
-                f'<circle id="{ponto_id}" class="vista-ponto" cx="{dados["centro_x"]}" cy="{dados["centro_y"]}" r="18" '
+                f'<circle id="{ponto_id}" class="vista-ponto" cx="{dados["centro_x"]}" cy="{dados["centro_y"]}" r="20" '
                 f'role="button" tabindex="0" aria-pressed="false" aria-label="Peça {id_peca}: {esc(dados["nome"])}" '
                 f'data-nome="{esc(dados["nome"])}" data-destino="{esc(dados["destino"])}" data-id="{id_peca}"><title>{id_peca} - {esc(dados["nome"])}</title></circle>'
                 f'<text class="vista-ponto-id-sombra" x="{dados["centro_x"]}" y="{dados["centro_y"]}" dy="0.3em">{id_peca}</text>'
