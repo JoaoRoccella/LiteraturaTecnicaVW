@@ -581,10 +581,9 @@ def imagem_interativa(c: Catalogo, imagem: Path | None, linhas: list[dict[str, s
             pontos.append(
                 f'<circle id="{ponto_id}" class="vista-ponto" cx="{dados["centro_x"]}" cy="{dados["centro_y"]}" r="23" '
                 f'role="button" tabindex="0" aria-pressed="false" aria-label="Peça {id_peca}: {esc(dados["nome"])}" '
-                f'data-nome="{esc(dados["nome"])}" data-destino="{esc(dados["destino"])}" data-id="{id_peca}"><title>{id_peca} - {esc(dados["nome"])}</title>'
+                f'data-nome="{esc(dados["nome"])}" data-destino="{esc(dados["destino"])}" data-id="{id_peca}"><title>{id_peca} - {esc(dados["nome"])}</title></circle>'
                 f'<text class="vista-ponto-id-sombra" x="{dados["centro_x"]}" y="{dados["centro_y"]}">{id_peca}</text>'
                 f'<text class="vista-ponto-id" x="{dados["centro_x"]}" y="{dados["centro_y"]}">{id_peca}</text>'
-                f'</circle>'
             )
             nome_html = f'<a class="vista-peca-nome {classe}" href="#{ponto_id}" data-id="{id_peca}">{esc(dados["nome"])}</a>'
         else:
