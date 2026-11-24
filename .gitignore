@@ -1,0 +1,23 @@
+.venv/
+__pycache__/
+*.py[cod]
+
+# Conteúdo original do CD (lido diretamente da unidade óptica).
+/Acrobat/
+/Codigo_Fonte_Vol_11/
+/DISK1/
+/Disk2/
+/dados/
+/imagens/
+/Caminho.FAM
+/Caminho.TV
+/DRIVE.TXT
+/Instalar.exe
+/OPERACAO.DB
+/OPERACAO.MB
+/autorun.inf
+/caminho.db
+/caminho.mb
+/inst.bat
+/instrucoes.rtf
+/tutorial.exe

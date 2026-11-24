@@ -1,0 +1,19 @@
+[project]
+name = "leitor-cd-tecnico"
+version = "0.1.0"
+description = "Leitor local de CDs de literatura técnica automotiva"
+requires-python = ">=3.11"
+dependencies = [
+    "paradoxdb==0.1.0",
+    "xlrd>=2.0.1,<3",
+]
+
+[project.scripts]
+leitor-cd = "leitor.__main__:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["leitor"]
