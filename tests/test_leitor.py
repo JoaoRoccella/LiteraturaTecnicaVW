@@ -7,7 +7,7 @@ from pathlib import Path
 from unittest.mock import patch
 from urllib.error import HTTPError
 from urllib.parse import urlencode
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 
 from leitor.__main__ import (
     Servidor, busca, documento, imagem_interativa, planilha, trilha_navegacao, veiculos, vista,
@@ -221,6 +221,71 @@ class CatalogoTest(unittest.TestCase):
             self.assertEqual(erro.exception.code, 400)
             erro.exception.close()
         finally:
+            servidor.shutdown()
+            thread.join()
+            servidor.server_close()
+
+    def test_loader_responde_durante_leitura_e_preserva_acesso_direto(self):
+        iniciou = threading.Event()
+        segundo_iniciou = threading.Event()
+        liberar = threading.Event()
+        detector = DetectorSimulado()
+        fonte = FonteCD(detector)
+        atualizar = fonte.atualizar
+
+        def leitura_lenta():
+            if iniciou.is_set():
+                segundo_iniciou.set()
+            else:
+                iniciou.set()
+            if not liberar.wait(5):
+                raise TimeoutError("A leitura simulada não foi liberada")
+            return atualizar()
+
+        servidor = Servidor(("127.0.0.1", 0), fonte)
+        thread = threading.Thread(target=servidor.serve_forever)
+        thread.start()
+        base = f"http://127.0.0.1:{servidor.server_port}"
+        respostas = []
+
+        def ler_conteudo():
+            requisicao = Request(base + "/buscar?q=abc&escopo=dados", headers={"X-Leitor-Conteudo": "1"})
+            with urlopen(requisicao, timeout=5) as resposta:
+                respostas.append(resposta.read().decode())
+
+        leitor = threading.Thread(target=ler_conteudo)
+        outro_leitor = threading.Thread(target=ler_conteudo)
+        try:
+            with patch.object(fonte, "atualizar", side_effect=leitura_lenta):
+                leitor.start()
+                self.assertTrue(iniciou.wait(2))
+                requisicao = Request(base + "/buscar?q=abc&escopo=dados",
+                                     headers={"Accept": "text/html"})
+                with urlopen(requisicao, timeout=2) as resposta:
+                    shell = resposta.read().decode()
+                self.assertIn("Verificando e lendo dados do CD", shell)
+                self.assertIn("/buscar?q=abc&amp;escopo=dados&amp;__direto=1", shell)
+                self.assertTrue(leitor.is_alive())
+                outro_leitor.start()
+                self.assertFalse(segundo_iniciou.wait(0.3))
+                liberar.set()
+                leitor.join(5)
+                outro_leitor.join(5)
+                self.assertFalse(leitor.is_alive())
+                self.assertFalse(outro_leitor.is_alive())
+                self.assertTrue(segundo_iniciou.is_set())
+                self.assertEqual(len(respostas), 2)
+                self.assertIn("Insira o CD", respostas[0])
+            requisicao = Request(base + "/buscar?q=abc&escopo=dados&__direto=1",
+                                 headers={"Accept": "text/html"})
+            with urlopen(requisicao, timeout=5) as resposta:
+                self.assertIn("Insira o CD", resposta.read().decode())
+        finally:
+            liberar.set()
+            if leitor.ident is not None:
+                leitor.join(5)
+            if outro_leitor.ident is not None:
+                outro_leitor.join(5)
             servidor.shutdown()
             thread.join()
             servidor.server_close()

@@ -46,6 +46,11 @@ navegadores confiáveis.
 
 ## Como usar
 
+- Um indicador aparece enquanto a aplicação verifica ou lê o CD, inclusive
+  ao abrir uma página e carregar suas imagens. Se a comunicação com o
+  servidor falhar, use **Tentar novamente**. Sem JavaScript, o link
+  **Abrir sem indicador de carregamento** permite acessar cada página
+  diretamente, preservando seus parâmetros.
 - O caminho de navegação no topo das páginas permite voltar diretamente às
   etapas anteriores, incluindo veículo, conjunto, grupo, variante, vista,
   busca e pastas. Links de busca conservam o contexto da vista de origem.

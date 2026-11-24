@@ -7,10 +7,11 @@ import logging
 import mimetypes
 import re
 import sys
+import threading
 import webbrowser
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, urlencode, urlsplit
+from urllib.parse import parse_qs, parse_qsl, urlencode, urlsplit
 
 import xlrd
 
@@ -41,7 +42,21 @@ th{background:#e8f0f3}img{max-width:100%;height:auto}.figure{margin:1rem 0}.mute
 .breadcrumb ol{display:flex;flex-wrap:wrap;gap:.3rem;list-style:none;padding:0;margin:0 0 1.5rem}
 .breadcrumb li:not(:first-child)::before{content:"/";color:#526774;margin-right:.3rem}
 .breadcrumb li{overflow-wrap:anywhere}
+.leitura{position:fixed;inset:0;z-index:1000;display:grid;place-items:center;
+background:rgba(242,245,247,.94)}
+.leitura[hidden]{display:none}
+.leitura-conteudo{text-align:center;background:white;border:1px solid #d5e0e6;
+border-radius:8px;padding:1.5rem;max-width:90vw}
+.leitura-spinner{width:2.5rem;height:2.5rem;margin:auto;border:4px solid #d5e0e6;
+border-top-color:#075b85;border-radius:50%;animation:girar .8s linear infinite}
+@keyframes girar{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.leitura-spinner{animation:none}}
 """
+
+LOADER = """<div id="leitura" class="leitura" role="status" aria-live="polite">
+<div class="leitura-conteudo"><div class="leitura-spinner" aria-hidden="true"></div>
+<p id="leitura-mensagem">Verificando e lendo dados do CD. Aguarde...</p>
+<button id="leitura-tentar" hidden onclick="location.reload()">Tentar novamente</button></div></div>"""
 
 
 def esc(value: object) -> str:
@@ -61,21 +76,73 @@ def arquivo_link(catalogo: Catalogo, path: Path, label: str | None = None,
     return link("/arquivo", label or path.name, path=catalogo.relativo(path), **(contexto or {}))
 
 
+def pagina_carregando(direto: str) -> bytes:
+    return f"""<!doctype html><html lang="pt-br"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>Carregando · CD técnico</title>
+<style>{STYLE}</style></head><body>{LOADER}
+<noscript><style>.leitura{{display:none}}</style>
+<p>JavaScript está desativado. <a href="{esc(direto)}">Abrir sem indicador de carregamento</a>.</p></noscript>
+<script>
+async function carregarPagina() {{
+  try {{
+    const resposta = await fetch(location.href, {{headers: {{'X-Leitor-Conteudo': '1'}}, cache: 'no-store'}});
+    if (!(resposta.headers.get('content-type') || '').includes('text/html')) {{
+      throw new Error('Resposta inesperada do servidor.');
+    }}
+    const pagina = await resposta.text();
+    document.open();
+    document.write(pagina);
+    document.close();
+  }} catch (erro) {{
+    console.error('Não foi possível carregar a página:', erro);
+    document.getElementById('leitura-mensagem').textContent =
+      'Não foi possível carregar os dados. Verifique a unidade e tente novamente.';
+    document.getElementById('leitura-tentar').hidden = false;
+  }}
+}}
+carregarPagina();
+</script></body></html>""".encode("utf-8")
+
+
 def pagina(titulo: str, conteudo: str, identidade: str = "", trilha: str = "") -> bytes:
     identificador = json.dumps(identidade).replace("<", "\\u003c")
     return f"""<!doctype html><html lang="pt-br"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>{esc(titulo)} · CD técnico</title>
-<style>{STYLE}</style></head><body><header><a href="/"><strong>CD técnico</strong></a>
+<style>{STYLE}</style><noscript><style>.leitura{{display:none}}</style></noscript>
+</head><body>{LOADER}<header><a href="/"><strong>CD técnico</strong></a>
 <nav><a href="/veiculos">Veículos e vistas</a><a href="/buscar">Buscar textos</a>
 <a href="/pasta?path=dados">Dados</a><a href="/pasta?path=imagens">Imagens</a>
 <a href="/pasta">Arquivos</a></nav></header><main>{trilha}{conteudo}</main>
 <script>
 const midiaInicial = {identificador};
+const leitura = document.getElementById('leitura');
+window.addEventListener('load', () => {{ leitura.hidden = true; }});
+window.addEventListener('pageshow', evento => {{
+  if (evento.persisted) leitura.hidden = true;
+}});
+document.addEventListener('click', evento => {{
+  const alvo = evento.target instanceof Element ? evento.target.closest('a') : null;
+  if (!alvo || evento.defaultPrevented || evento.button !== 0 || evento.ctrlKey ||
+      evento.metaKey || evento.shiftKey || evento.altKey || alvo.hasAttribute('download') ||
+      (alvo.target && alvo.target !== '_self')) return;
+  const destino = new URL(alvo.href, location.href);
+  if (destino.origin !== location.origin ||
+      (destino.pathname === location.pathname && destino.search === location.search && destino.hash)) return;
+  leitura.hidden = false;
+}});
+document.addEventListener('submit', evento => {{
+  if (!evento.defaultPrevented && evento.target instanceof HTMLFormElement &&
+      (!evento.target.target || evento.target.target === '_self') &&
+      new URL(evento.target.action, location.href).origin === location.origin) leitura.hidden = false;
+}});
 async function verificarMidia() {{
   try {{
     const resposta = await fetch('/status', {{cache: 'no-store'}});
     const estado = await resposta.json();
-    if (estado.midia !== midiaInicial) window.location.replace('/');
+    if (estado.midia !== midiaInicial) {{
+      leitura.hidden = false;
+      window.location.replace('/');
+    }}
     const aviso = document.getElementById('estado-cd');
     if (aviso) aviso.textContent = estado.mensagem;
   }} catch (erro) {{
@@ -585,16 +652,30 @@ def arquivo(c: Catalogo, rel: str, termo: str, offset: int, sheet: int,
     return f"<h1>{esc(path.name)}</h1><p class='path'>{esc(rel)}</p><p>Formato auxiliar ou executável legado; este leitor não o executa nem interpreta.</p>"
 
 
-class Servidor(HTTPServer):
+class Servidor(ThreadingHTTPServer):
     def __init__(self, address: tuple[str, int], fonte: FonteCD):
         super().__init__(address, Requisicao)
         self.fonte = fonte
+        self.trava = threading.Lock()
 
 
 class Requisicao(BaseHTTPRequestHandler):
     server: Servidor
 
     def do_GET(self) -> None:
+        parsed = urlsplit(self.path)
+        params = parse_qsl(parsed.query, keep_blank_values=True)
+        if (parsed.path not in {"/imagem", "/status"} and
+                "text/html" in self.headers.get("Accept", "") and
+                self.headers.get("X-Leitor-Conteudo") != "1" and
+                ("__direto", "1") not in params):
+            direto = parsed.path + "?" + urlencode(params + [("__direto", "1")])
+            self.responder(200, pagina_carregando(direto), "text/html; charset=utf-8")
+            return
+        with self.server.trava:
+            self.responder_conteudo()
+
+    def responder_conteudo(self) -> None:
         parsed = urlsplit(self.path)
         query = {k: v[-1] for k, v in parse_qs(parsed.query, keep_blank_values=True).items()}
         fonte = self.server.fonte
