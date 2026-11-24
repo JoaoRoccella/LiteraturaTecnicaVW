@@ -2,13 +2,14 @@ import tempfile
 import threading
 import unittest
 import ctypes
+from html.parser import HTMLParser
 from pathlib import Path
 from unittest.mock import patch
 from urllib.error import HTTPError
 from urllib.parse import urlencode
 from urllib.request import urlopen
 
-from leitor.__main__ import Servidor, busca, documento, planilha, veiculos, vista
+from leitor.__main__ import Servidor, busca, documento, imagem_interativa, planilha, veiculos, vista
 from leitor.catalogo import Catalogo, ler_tabela
 from leitor.midia import DetectorLinux, DetectorWindows, FonteCD, Midia, Resultado, _montagens
 
@@ -22,6 +23,16 @@ class DetectorSimulado:
 
     def detectar(self):
         return self.resultado
+
+
+class PontosHTML(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.pontos = []
+
+    def handle_starttag(self, tag, attrs):
+        if tag == "circle":
+            self.pontos.append(dict(attrs))
 
 
 class CatalogoTest(unittest.TestCase):
@@ -70,6 +81,34 @@ class CatalogoTest(unittest.TestCase):
         self.assertEqual(self.catalogo.referencias(self.doc, "original.bmp")[0].name, "original.bmp")
         with self.assertRaises(ValueError):
             self.catalogo.caminho("../secreto.txt")
+
+    def test_pontos_interativos_e_dados_invalidos(self):
+        imagem = self.root / "imagens" / "img" / "pontos.gif"
+        imagem.write_bytes(b"GIF89a" + (200).to_bytes(2, "little") + (100).to_bytes(2, "little"))
+        linhas = [
+            {"NomePeca": 'Peça <A> "X"', "X": "10", "Y": "20", "TipoDoLink": "1", "Link": "1010"},
+            {"NomePeca": "Sem link", "X": "60", "Y": "30", "TipoDoLink": "0", "Link": ""},
+            {"NomePeca": "Fora", "X": "200", "Y": "1", "TipoDoLink": "1", "Link": "1011"},
+            {"NomePeca": "Inválida", "X": "", "Y": "1", "TipoDoLink": "0", "Link": ""},
+            {"NomePeca": "Link ausente", "X": "90", "Y": "40", "TipoDoLink": "1", "Link": ""},
+        ]
+        resultado = imagem_interativa(self.catalogo, imagem, linhas, "dados/Modelo")
+        parser = PontosHTML()
+        parser.feed(resultado)
+        self.assertEqual(len(parser.pontos), 3)
+        self.assertEqual((parser.pontos[0]["cx"], parser.pontos[0]["cy"], parser.pontos[0]["r"]), ("25", "35", "23"))
+        self.assertEqual(parser.pontos[0]["data-nome"], 'Peça <A> "X"')
+        self.assertEqual(parser.pontos[0]["data-destino"], "/buscar?q=1010&escopo=dados%2FModelo&prefixo=1")
+        self.assertEqual(parser.pontos[1]["data-destino"], "")
+        self.assertEqual(parser.pontos[2]["data-destino"], "")
+        self.assertIn("linha 3: ponto fora da imagem", resultado)
+        self.assertIn("linha 4: coordenadas inválidas", resultado)
+        self.assertIn("linha 5: código de link ausente", resultado)
+
+    def test_imagem_interativa_rejeita_gif_invalido(self):
+        imagem = self.root / "imagens" / "img" / "fig1.GIF"
+        with self.assertRaisesRegex(ValueError, "Imagem GIF inválida"):
+            imagem_interativa(self.catalogo, imagem, [], "")
 
     def test_pasta_dados_com_caixa_diferente(self):
         (self.root / "dados").rename(self.root / "DADOS")
@@ -263,6 +302,11 @@ class CDRealTest(unittest.TestCase):
         self.assertIn("imagens%2Fve", resultado)
         self.assertIn("prefixo=1", resultado)
         self.assertIn("dados%2FGol", resultado)
+        parser = PontosHTML()
+        parser.feed(resultado)
+        bloco = next(p for p in parser.pontos if p["data-nome"] == "Bloco do Motor")
+        self.assertEqual((bloco["cx"], bloco["cy"]), ("486", "507"))
+        self.assertIn("q=1010", bloco["data-destino"])
 
     def test_planilha_e_texto_com_imagens(self):
         resultado = documento(self.catalogo, ROOT / "dados" / "GolIII" / "Mp90" / "248855K.TXT")

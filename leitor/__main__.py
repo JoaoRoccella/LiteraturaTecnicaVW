@@ -35,6 +35,9 @@ th{background:#e8f0f3}img{max-width:100%;height:auto}.figure{margin:1rem 0}.mute
 .warning{padding:.8rem;background:#fff2cf;border-left:4px solid #cc9000}.error{background:#ffe5e5;border-left:4px solid #c33;padding:1rem}
 .path{overflow-wrap:anywhere}.doc p{margin:.5rem 0}.doc .nota{border-left:3px solid #78a5ba;padding-left:.8rem}
 .pagination{display:flex;gap:1rem;margin:1rem 0}.files{columns:2;column-width:300px;padding-left:1.4rem}
+.vista-svg{display:block;width:100%;height:auto}
+.vista-ponto{fill:transparent;stroke:transparent;stroke-width:3;cursor:pointer}
+.vista-ponto:hover,.vista-ponto:focus-visible,.vista-ponto[aria-pressed=true]{stroke:#075b85;outline:none}
 """
 
 
@@ -296,15 +299,109 @@ def veiculos(c: Catalogo, params: dict[str, str]) -> str:
     return corpo + "</ul></div>"
 
 
+def imagem_interativa(c: Catalogo, imagem: Path, linhas: list[dict[str, str]], escopo: str) -> str:
+    with imagem.open("rb") as arquivo_imagem:
+        cabecalho = arquivo_imagem.read(10)
+    if len(cabecalho) != 10 or cabecalho[:6] not in (b"GIF87a", b"GIF89a"):
+        raise ValueError(f"Imagem GIF inválida: {c.relativo(imagem)}")
+    largura = int.from_bytes(cabecalho[6:8], "little")
+    altura = int.from_bytes(cabecalho[8:10], "little")
+    if not largura or not altura:
+        raise ValueError(f"Dimensões inválidas na imagem: {c.relativo(imagem)}")
+
+    pontos = []
+    problemas = []
+    for indice, linha in enumerate(linhas, 1):
+        nome = linha.get("NomePeca", "")
+        try:
+            x, y = int(linha["X"]), int(linha["Y"])
+        except (KeyError, ValueError):
+            problemas.append(f"linha {indice}: coordenadas inválidas")
+            continue
+        # As coordenadas do CD são a origem da área de 45 px do programa original.
+        centro_x, centro_y = x + 15, y + 15
+        if not (0 <= centro_x < largura and 0 <= centro_y < altura):
+            problemas.append(f"linha {indice}: ponto fora da imagem")
+            continue
+        if not nome:
+            problemas.append(f"linha {indice}: nome da peça ausente")
+            continue
+        destino = ""
+        if linha.get("TipoDoLink") == "1":
+            codigo = linha.get("Link", "")
+            if codigo:
+                destino = url("/buscar", q=codigo, escopo=escopo, prefixo=1)
+            else:
+                problemas.append(f"linha {indice}: código de link ausente")
+        pontos.append(
+            f'<circle class="vista-ponto" cx="{centro_x}" cy="{centro_y}" r="23" '
+            f'role="button" tabindex="0" aria-pressed="false" aria-label="Selecionar peça: {esc(nome)}" '
+            f'data-nome="{esc(nome)}" data-destino="{esc(destino)}"><title>{esc(nome)}</title></circle>'
+        )
+    aviso = ""
+    if problemas:
+        aviso = f'<p class="warning">Não foi possível mapear alguns dados: {esc("; ".join(problemas))}.</p>'
+    src = url("/imagem", path=c.relativo(imagem))
+    return f"""<div class="card">
+<p>Selecione um círculo da imagem para identificar a peça. Use Tab e Enter ou Espaço pelo teclado.</p>
+<p id="peca-selecionada" aria-live="polite">Nenhuma peça selecionada.</p>{aviso}
+<svg class="vista-svg" style="max-width:{largura}px" viewBox="0 0 {largura} {altura}"
+     role="group" aria-label="Vista explodida com peças selecionáveis">
+<image href="{esc(src)}" width="{largura}" height="{altura}" />
+{''.join(pontos)}</svg></div>
+<script>
+const pontosVista = document.querySelectorAll('.vista-ponto');
+const imagemVista = document.querySelector('.vista-svg');
+function selecionarPeca(ponto) {{
+  pontosVista.forEach(item => item.setAttribute('aria-pressed', String(item === ponto)));
+  const destino = ponto.dataset.destino;
+  const painel = document.getElementById('peca-selecionada');
+  painel.replaceChildren();
+  if (destino) {{
+    const nome = document.createElement('a');
+    nome.href = destino;
+    nome.textContent = ponto.dataset.nome;
+    painel.append(nome);
+  }} else {{
+    painel.textContent = ponto.dataset.nome;
+  }}
+}}
+imagemVista.addEventListener('click', evento => {{
+  const matriz = imagemVista.getScreenCTM();
+  if (!matriz) return;
+  const posicao = imagemVista.createSVGPoint();
+  posicao.x = evento.clientX;
+  posicao.y = evento.clientY;
+  const local = posicao.matrixTransform(matriz.inverse());
+  let escolhido = null;
+  let menorDistancia = Infinity;
+  pontosVista.forEach(ponto => {{
+    const dx = local.x - ponto.cx.baseVal.value;
+    const dy = local.y - ponto.cy.baseVal.value;
+    const distancia = dx * dx + dy * dy;
+    if (distancia <= ponto.r.baseVal.value ** 2 && distancia < menorDistancia) {{
+      escolhido = ponto;
+      menorDistancia = distancia;
+    }}
+  }});
+  if (escolhido) selecionarPeca(escolhido);
+}});
+pontosVista.forEach(ponto => {{
+  ponto.addEventListener('keydown', evento => {{
+    if (evento.key === 'Enter' || evento.key === ' ') {{
+      evento.preventDefault();
+      selecionarPeca(ponto);
+    }}
+  }});
+}});
+</script>"""
+
+
 def vista(c: Catalogo, codigo: str, carro: str = "") -> str:
     if not re.fullmatch(r"[a-zA-Z0-9_-]+", codigo):
         raise ValueError("Código de vista inválido.")
     corpo = f"<h1>Vista explodida: {esc(codigo)}</h1>"
     imagem = c.localizar(f"imagens/ve/{codigo}r.gif") or c.localizar(f"imagens/ve/{codigo}.gif")
-    if imagem:
-        corpo += f'<div class="card"><img src="{esc(url("/imagem", path=c.relativo(imagem)))}" alt="Vista {esc(codigo)}"></div>'
-    else:
-        corpo += "<p class='warning'>Imagem da vista não encontrada.</p>"
     modelos = (
         ("Gol 95 >", "Gol"), ("Parati 96 >", "Parati"), ("Saveiro 98 >", "Saveiro"),
         ("Santana 91 >", "Santana"), ("Quantum 92 >", "Quantum"), ("Kombi", "KOMBI"),
@@ -330,6 +427,13 @@ def vista(c: Catalogo, codigo: str, carro: str = "") -> str:
         if not escopo:
             corpo += "<p class='warning'>Pasta do veículo não identificada; a busca de operações abrangerá todo o CD.</p>"
     db = c.localizar(f"dados/ve/{codigo}.db")
+    if imagem and db:
+        _, linhas, _ = ler_tabela(db)
+        corpo += imagem_interativa(c, imagem, linhas, escopo)
+    elif imagem:
+        corpo += f'<div class="card"><img src="{esc(url("/imagem", path=c.relativo(imagem)))}" alt="Vista {esc(codigo)}"></div>'
+    else:
+        corpo += "<p class='warning'>Imagem da vista não encontrada.</p>"
     if db:
         corpo += tabela(c, db, "", 0, escopo)
     else:

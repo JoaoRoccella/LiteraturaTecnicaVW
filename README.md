@@ -47,10 +47,11 @@ navegadores confiáveis.
 ## Como usar
 
 - **Veículos e vistas:** escolha veículo, conjunto, grupo e variante para
-  listar as vistas explodidas disponíveis. A imagem aparece junto com a tabela
-  de peças. Um código de link de peça do tipo 1 abre a busca por prefixo dos
-  nomes de operações; os resultados podem incluir várias variantes e devem
-  ser escolhidos pelo caminho.
+  listar as vistas explodidas disponíveis. Selecione um círculo na imagem
+  para ver o nome da peça; também é possível usar Tab e Enter ou Espaço.
+  Quando a peça tem link do tipo 1, seu nome abre a busca por prefixo dos
+  nomes de operações. Os resultados podem incluir várias variantes e devem
+  ser escolhidos pelo caminho. A tabela original continua abaixo da imagem.
 - **Buscar textos:** pesquisa sem diferenciar maiúsculas ou acentos no
   título, no caminho e no conteúdo dos arquivos `.txt`. O campo opcional
   restringe a pesquisa a uma pasta relativa à raiz do CD, por exemplo
@@ -108,9 +109,12 @@ CD e informa isso na vista.
 ## Limitações
 
 - É um navegador dos dados, não uma reprodução integral da interface
-  original: não implementa áreas clicáveis sobre as vistas, relatórios,
-  relacionamentos completos de esquemas ou telas especializadas de química.
+  original: não implementa relatórios, relacionamentos completos de
+  esquemas ou telas especializadas de química.
   As tabelas correspondentes continuam acessíveis pelo explorador.
+- As áreas clicáveis das vistas usam as coordenadas da tabela e uma área
+  circular ao redor de cada identificador. Coordenadas ausentes, inválidas ou
+  fora da imagem são informadas e permanecem disponíveis na tabela.
 - Os links de peça pesquisam pelo prefixo no nome dos textos e podem retornar
   operações de outras variantes. Confira veículo, sistema e variante antes
   de usar uma informação técnica.
