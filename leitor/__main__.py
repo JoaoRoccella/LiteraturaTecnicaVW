@@ -39,8 +39,8 @@ th{background:#e8f0f3}img{max-width:100%;height:auto}.figure{margin:1rem 0}.mute
 .vista-svg{display:block;width:100%;height:auto}
 .vista-ponto{fill:transparent;stroke:transparent;stroke-width:3;cursor:pointer}
 .vista-ponto:hover,.vista-ponto:focus-visible,.vista-ponto[aria-pressed=true]{stroke:#075b85;outline:none}
-.vista-ponto-id{font-size:0.8rem;font-weight:bold;fill:white;pointer-events:none;user-select:none;text-anchor:middle;dominant-baseline:central}
-.vista-ponto-id-sombra{font-size:0.8rem;font-weight:bold;fill:#075b85;pointer-events:none;user-select:none;text-anchor:middle;dominant-baseline:central}
+.vista-ponto-id{font-size:14px;font-weight:bold;fill:white;pointer-events:none;user-select:none;text-anchor:middle;dominant-baseline:central;text-rendering:optimizeLegibility}
+.vista-ponto-id-sombra{font-size:14px;font-weight:bold;fill:#075b85;pointer-events:none;user-select:none;text-anchor:middle;dominant-baseline:central;text-rendering:optimizeLegibility;stroke:#075b85;stroke-width:0.5}
 .vista-peca-ativa{background:#e6f3ff;color:#102d42;border-left:4px solid #075b85;
 padding:.8rem 1rem;font-size:2rem;font-weight:600;overflow-wrap:anywhere}
 .vista-peca-ativa a{color:#064b70}
