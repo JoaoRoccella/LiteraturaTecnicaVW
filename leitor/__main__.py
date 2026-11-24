@@ -577,9 +577,7 @@ def imagem_interativa(c: Catalogo, imagem: Path | None, linhas: list[dict[str, s
         classe = "vista-peca-com-link" if dados["destino"] else "vista-peca-sem-link"
         
         if dados["localizado"]:
-            # Adiciona círculo SVG com ID dentro e label acima
-            # Label posicionada ligeiramente acima do círculo para melhor legibilidade
-            label_y = dados["centro_y"] - 35
+            # Adiciona círculo SVG com ID centralizado dentro
             pontos.append(
                 f'<circle id="{ponto_id}" class="vista-ponto" cx="{dados["centro_x"]}" cy="{dados["centro_y"]}" r="23" '
                 f'role="button" tabindex="0" aria-pressed="false" aria-label="Peça {id_peca}: {esc(dados["nome"])}" '
@@ -587,7 +585,6 @@ def imagem_interativa(c: Catalogo, imagem: Path | None, linhas: list[dict[str, s
                 f'<text class="vista-ponto-id-sombra" x="{dados["centro_x"]}" y="{dados["centro_y"]}">{id_peca}</text>'
                 f'<text class="vista-ponto-id" x="{dados["centro_x"]}" y="{dados["centro_y"]}">{id_peca}</text>'
                 f'</circle>'
-                f'<text class="vista-ponto-label" x="{dados["centro_x"]}" y="{label_y}">{id_peca}</text>'
             )
             nome_html = f'<a class="vista-peca-nome {classe}" href="#{ponto_id}" data-id="{id_peca}">{esc(dados["nome"])}</a>'
         else:
