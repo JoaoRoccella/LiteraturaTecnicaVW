@@ -197,6 +197,10 @@ img {
   outline: none;
 }
 
+.vista-ponto:focus-visible {
+  fill: #075b85;
+}
+
 .vista-ponto-id {
   font-size: 14px;
   font-weight: bold;
